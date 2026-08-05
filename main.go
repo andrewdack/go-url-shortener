@@ -2,9 +2,15 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/andrewdack/go-url-shortener/handler"
+	"github.com/andrewdack/go-url-shortener/store"
 	"github.com/gin-gonic/gin"
 )
 
+// Main function to start the web server and register routes
+// Note: In more complex apps, endpoints should live in a separate file
+// For sake of simplicity, we are keeping them here for now
 func main() {
 	// r is the router/engine. gin.Default() creates a Gin engine with two middleware already attached
 	// 1. a logger (prints req logs to console)
@@ -20,6 +26,19 @@ func main() {
 			"message": "Hey Go URL Shortener !",
 		})
 	})
+
+	// Register a POST route to "/create-short-url"
+	// Pass the request context to the handler function
+	r.POST("/create-short-url", func(c *gin.Context) {
+		handler.CreateShortUrl(c)
+	})
+
+	r.GET("/:shortUrl", func(c *gin.Context) {
+		handler.HandleShortUrlRedirect(c)
+	})
+
+	// Note that store initialization happens here
+	store.InitializeStore()
 
 	err := r.Run(":9808")
 	if err != nil {

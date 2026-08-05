@@ -44,7 +44,7 @@ func GenerateShortLink(initialLink string, userId string) string {
 	
 	// Turn the uin64 into a string and convert decimal string into bytes
 	// Convert bytes to base58 encoded string
-	finalString := toBase58EncodedString([]byte(fmt.Sprintf("%d", generatedNumber)))
+	finalString := toBase58EncodedString(fmt.Appendf(nil, "%d", generatedNumber))
 
 	// Return only the first 8 characters of the Base58 string and return that as the short link
 	// This increases collision risk but with a low traffic and low users should not be a worry
