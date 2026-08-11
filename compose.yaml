@@ -1,3 +1,7 @@
+# Compose defines two services: 
+# 1. redis: a Redis server running in a Docker container on port 6379
+# 2. backend: a backend service that depends on the Redis server and runs on port 9808
+#             and takes envs for Redis address and environment mode.
 services:
   redis:
     image: redis:7-alpine
@@ -33,6 +37,8 @@ services:
     ports:
       - "127.0.0.1:9808:9808"
     restart: unless-stopped
+    # Healthcheck for the backend service to ensure it is running and responsive
+    # Make sure backend service has a /health endpoint that returns 200 OK when healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:9808/health >/dev/null || exit 1"]
       interval: 10s
@@ -50,6 +56,7 @@ networks:
   app-net:
     driver: bridge
 
+# persistent volume for Redis data
 volumes:
   redis-data:
   

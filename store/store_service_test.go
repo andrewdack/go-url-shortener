@@ -22,10 +22,12 @@ func TestInsertionAndRetrieval(t *testing.T) {
 	shortURL := "Jsz4k57oAX"
 
 	// Persist data mapping
-	SaveUrlMapping(shortURL, initialLink, userUUId)
+	err := SaveUrlMapping(shortURL, initialLink, userUUId)
+	assert.NoError(t, err)
 
 	// Retrieve initial URL
-	retrievedUrl := RetrieveInitialUrl(shortURL)
+	retrievedUrl, err := RetrieveInitialUrl(shortURL)
+	assert.NoError(t, err)
 
 	assert.Equal(t, initialLink, retrievedUrl)
 }

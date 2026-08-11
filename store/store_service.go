@@ -50,11 +50,12 @@ func InitializeStore() *StorageService {
 /* We want to be able to save the mapping between the originalUrl
 and the generated shortUrl url
 */
-func SaveUrlMapping(shortUrl string, originalUrl string, userId string) {
+func SaveUrlMapping(shortUrl string, originalUrl string, userId string) error {
 	err := storeService.redisClient.Set(ctx, shortUrl, originalUrl, CacheDuration).Err()
 	if err != nil {
-		panic(fmt.Sprintf("Failed saving key url | Error: %v - shortUrl: %s - originalUrl: %s\n", err, shortUrl, originalUrl))
+		return fmt.Errorf("failed saving key url - shortUrl: %s - originalUrl: %s: %w", shortUrl, originalUrl, err)
 	}
+	return nil
 }
 
 /*
@@ -63,10 +64,10 @@ is provided. This is when users will be calling the shortlink in the
 url, so what we need to do here is to retrieve the long url and
 think about redirect.
 */
-func RetrieveInitialUrl(shortUrl string) string {
+func RetrieveInitialUrl(shortUrl string) (string, error) {
 	result, err := storeService.redisClient.Get(ctx, shortUrl).Result()
 	if err != nil {
-		panic(fmt.Sprintf("Failed RetrieveInitialUrl url | Error: %v - shortUrl: %s\n", err, shortUrl))
+		return "", fmt.Errorf("failed retrieving short url %s: %w", shortUrl, err)
 	}
-	return result
+	return result, nil
 }

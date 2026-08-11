@@ -2,11 +2,13 @@ package handler
 
 // import gin
 import (
+	"errors"
 	"net/http"
 
 	"github.com/andrewdack/go-url-shortener/shortener"
 	"github.com/andrewdack/go-url-shortener/store"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 )
 
 // Request model definition
@@ -29,7 +31,10 @@ func CreateShortUrl(c *gin.Context) {
 	}
 
 	shortURL := shortener.GenerateShortLink(createShortUrlRequest.LongUrl, createShortUrlRequest.UserId)
-	store.SaveUrlMapping(shortURL, createShortUrlRequest.LongUrl, createShortUrlRequest.UserId)
+	if err := store.SaveUrlMapping(shortURL, createShortUrlRequest.LongUrl, createShortUrlRequest.UserId); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save short url"})
+		return
+	}
 
 	host := "http://localhost:9808/"
 	c.JSON(200, gin.H{
@@ -40,6 +45,14 @@ func CreateShortUrl(c *gin.Context) {
 
 func HandleShortUrlRedirect(c *gin.Context) {
 	shortUrl := c.Param("shortUrl")
-	initialUrl := store.RetrieveInitialUrl(shortUrl)
-	c.Redirect(302, initialUrl)
+	initialUrl, err := store.RetrieveInitialUrl(shortUrl)
+	if errors.Is(err, redis.Nil) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve short url"})
+		return
+	}
+	c.Redirect(http.StatusFound, initialUrl)
 }
