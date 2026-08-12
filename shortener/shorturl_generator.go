@@ -41,7 +41,7 @@ func GenerateShortLink(initialLink string, userId string) string {
 	// This is lossy -> 32 bytes represents number way bigger than uint64 can hold
 	// So .Uint64 effecitvely keeps only the low 64 bits and discards the rest of the hash
 	generatedNumber := new(big.Int).SetBytes(urlHashBytes).Uint64()
-	
+
 	// Turn the uin64 into a string and convert decimal string into bytes
 	// Convert bytes to base58 encoded string
 	finalString := toBase58EncodedString(fmt.Appendf(nil, "%d", generatedNumber))

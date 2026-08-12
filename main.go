@@ -28,7 +28,6 @@ func main() {
 		})
 	})
 
-
 	// Register a POST route to "/create-short-url"
 	// Pass the request context to the handler function
 	r.POST("/create-short-url", func(c *gin.Context) {

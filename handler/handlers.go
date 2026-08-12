@@ -4,6 +4,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"os"
 
 	"github.com/andrewdack/go-url-shortener/shortener"
 	"github.com/andrewdack/go-url-shortener/store"
@@ -15,7 +16,7 @@ import (
 type UrlCreationRequest struct {
 	// Public fields cuz capitalized fields
 	// The backtick text after each field is a struct tag
-	LongUrl string `json:"longUrl" binding:"required"`
+	LongUrl string `json:"longUrl" binding:"required, url"`
 	UserId  string `json:"userId" binding:"required"`
 }
 
@@ -36,9 +37,13 @@ func CreateShortUrl(c *gin.Context) {
 		return
 	}
 
-	host := "http://localhost:9808/"
+	host := os.Getenv("PUBLIC_HOST")
+	if host == "" {
+		// If PUBLIC_HOST is not set, default to localhost with port 9808
+		host = "http://localhost:9808/"
+	}
 	c.JSON(200, gin.H{
-		"message": "Short URL created successfully",
+		"message":  "Short URL created successfully",
 		"shortUrl": host + shortURL,
 	})
 }

@@ -1,0 +1,17 @@
+.git
+.gitignore
+.dockerignore
+
+# Local dev artifacts
+dump.rdb
+*.rdb
+.DS_Store
+.env
+.env.*
+
+# Docker/compose files aren't needed inside the build context
+Dockerfile
+compose.yaml
+
+# Tests never need to ship in the image
+*_test.go

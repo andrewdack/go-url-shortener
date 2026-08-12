@@ -17,7 +17,6 @@ func TestShortLinkGenerator(t *testing.T) {
 	initialLink_3 := "https://spectrum.ieee.org/automaton/robotics/home-robots/hello-robots-stretch-mobile-manipulator"
 	shortLink_3 := GenerateShortLink(initialLink_3, UserId)
 
-
 	assert.Equal(t, shortLink_1, "jTa4L57P")
 	assert.Equal(t, shortLink_2, "d66yfx7N")
 	assert.Equal(t, shortLink_3, "dhZTayYQ")

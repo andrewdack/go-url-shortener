@@ -33,6 +33,7 @@ services:
         condition: service_healthy
     environment:
       REDIS_ADDR: redis:6379
+      PUBLIC_HOST: http://localhost:9808/
       ENV: development
     ports:
       - "127.0.0.1:9808:9808"

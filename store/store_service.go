@@ -47,7 +47,9 @@ func InitializeStore() *StorageService {
 	return storeService
 }
 
-/* We want to be able to save the mapping between the originalUrl
+/*
+	We want to be able to save the mapping between the originalUrl
+
 and the generated shortUrl url
 */
 func SaveUrlMapping(shortUrl string, originalUrl string, userId string) error {
