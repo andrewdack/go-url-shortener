@@ -40,8 +40,13 @@ npm run build
 
 The Vite base path must remain `/go-url-shortener/` for GitHub Pages.
 
-## CORS prerequisite
+## CORS
 
-The Go backend does not currently enable CORS. Browser API requests from the Vite dev server or
-GitHub Pages will be blocked until the backend allows the appropriate frontend origin and request
-methods (`GET`, `POST`, `PATCH`, `DELETE`, and `OPTIONS`).
+The Go API now enables CORS for the local Vite origins
+(`http://localhost:5173` and `http://127.0.0.1:5173`) and the GitHub Pages origin
+(`https://andrewdack.github.io`). It allows the frontend's JSON `GET`, `POST`, `PATCH`, and
+`DELETE` requests, including browser preflight `OPTIONS` requests.
+
+For a deployed frontend, set `VITE_API_BASE_URL` to the public backend origin and ensure the
+backend's allowed-origin list includes the exact frontend origin. The origin should not include
+the `/go-url-shortener/` path.

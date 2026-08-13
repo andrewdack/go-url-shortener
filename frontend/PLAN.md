@@ -98,9 +98,15 @@ You'll need routing since there's more than one logical view. Install `vue-route
 - Don't change the deploy workflow or `vite.config.js` base path.
 - Don't introduce a component library or state management library (Pinia, etc.) — this app is small enough for plain `ref`/`reactive` and route params; don't over-engineer it.
 
-## One backend prerequisite (not yet done, blocks real end-to-end testing against the deployed API)
+## CORS status
 
-The Go backend has **no CORS configuration** — grep `main.go`/`router/router.go` for "cors" to confirm, currently nothing. Once the frontend is deployed to `github.io` and the backend to wherever it ends up (Railway/Render, TBD), cross-origin `fetch` calls will be blocked by the browser until `gin-contrib/cors` (or equivalent) is added to allow the deployed frontend's origin. This is a backend change, small, but out of scope for a frontend-focused task unless you're asked to do it too — flag it rather than silently skipping around it (e.g. don't build something that only works because of `--disable-web-security` or a browser extension).
+The Go backend now enables CORS for the local Vite origins (`http://localhost:5173` and
+`http://127.0.0.1:5173`) and the GitHub Pages origin (`https://andrewdack.github.io`). The
+frontend can make its JSON requests and browser preflight `OPTIONS` requests without a proxy.
+
+If the frontend is deployed to a different origin, add that exact origin to the backend's CORS
+allowlist. The origin is only the scheme and host; it does not include the `/go-url-shortener/`
+path.
 
 ## Verifying your work
 
