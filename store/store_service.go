@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // define a struct wrapper around raw Redis client
 type StorageService struct {
 	redisClient *redis.Client
+	pgPool      *pgxpool.Pool
 }
 
 // Top level declarations for the storeService and Redis context
@@ -26,7 +28,10 @@ var (
 // purged automatically from the cache and stored back in RDBMS whenever cache is full
 const CacheDuration = 6 * time.Hour
 
-var ErrUserIdMismatch = errors.New("user ID does not own short URL")
+var (
+	ErrUserIdMismatch = errors.New("user ID does not own short URL")
+	ErrNotFound       = errors.New("short url not found")
+)
 
 // ownerKey generates the Redis key for storing the owner (user ID) of a given short URL.
 func ownerKey(shortUrl string) string {
@@ -40,6 +45,7 @@ func clicksKey(shortUrl string) string {
 
 // Initializing the store service and return a store pointer
 func InitializeStore() *StorageService {
+	// Initialize Redis Cache
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if redisAddr == "" {
 		redisAddr = "localhost:6379"
@@ -57,6 +63,23 @@ func InitializeStore() *StorageService {
 	}
 	fmt.Printf("\nRedis started successfully: pong message = {%s}", pong)
 	storeService.redisClient = redisClient
+
+	// Initialize Postgres
+	databaseUrl := os.Getenv("DATABASE_URL")
+	if databaseUrl == "" {
+		databaseUrl = "postgres://shortener:shortener@localhost:5432/shortener?sslmode=disable"
+	}
+	pgPool, err := pgxpool.New(ctx, databaseUrl)
+	if err != nil {
+		panic(fmt.Sprintf("Error init postgres: %v", err))
+	}
+
+	if err := pgPool.Ping(ctx); err != nil {
+		panic(fmt.Sprintf("Error connecting to Postgres: %v", err))
+	}
+	fmt.Println("\nPostgres started successfully")
+	storeService.pgPool = pgPool
+	
 	return storeService
 }
 
