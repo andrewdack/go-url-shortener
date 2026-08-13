@@ -13,6 +13,10 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
+// Define Handler wrapper over storage service
+type Handler struct {
+	store *store.StorageService
+}
 // Request model definition
 type UrlCreationRequest struct {
 	// Public fields cuz capitalized fields
@@ -30,7 +34,18 @@ type UrlDeletionRequest struct {
 	UserId string `json:"userId" binding:"required"`
 }
 
-func CreateShortUrl(c *gin.Context) {
+// Create a New Handler wrapper over the storage service
+func NewHandler(storageService *store.StorageService) *Handler {
+	return &Handler{
+		store: storageService,
+	}
+}
+
+func (h *Handler) Store() *store.StorageService {
+	return h.store
+}
+
+func (h *Handler) CreateShortUrl(c *gin.Context) {
 	var createShortUrlRequest UrlCreationRequest
 
 	// Read the request body, parse the JSON, and bind it to the struct
@@ -42,7 +57,7 @@ func CreateShortUrl(c *gin.Context) {
 	}
 
 	shortURL := shortener.GenerateShortLink(createShortUrlRequest.LongUrl, createShortUrlRequest.UserId)
-	if err := store.SaveUrlMapping(shortURL, createShortUrlRequest.LongUrl, createShortUrlRequest.UserId); err != nil {
+	if err := h.store.SaveUrlMapping(c.Request.Context(), shortURL, createShortUrlRequest.LongUrl, createShortUrlRequest.UserId); err != nil {
 		log.Printf("failed to save short url mapping: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save short url"})
 		return
@@ -59,9 +74,9 @@ func CreateShortUrl(c *gin.Context) {
 	})
 }
 
-func HandleShortUrlRedirect(c *gin.Context) {
+func (h *Handler) HandleShortUrlRedirect(c *gin.Context) {
 	shortUrl := c.Param("shortUrl")
-	initialUrl, err := store.RetrieveInitialUrl(shortUrl)
+	initialUrl, err := h.store.RetrieveInitialUrl(c.Request.Context(), shortUrl)
 	if errors.Is(err, redis.Nil) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
 		return
@@ -74,7 +89,7 @@ func HandleShortUrlRedirect(c *gin.Context) {
 	c.Redirect(http.StatusFound, initialUrl)
 }
 
-func UpdateShortUrl(c *gin.Context) {
+func (h *Handler) UpdateShortUrl(c *gin.Context) {
 	shortUrl := c.Param("shortUrl")
 
 	var updateShortUrlRequest UrlUpdateRequest
@@ -83,7 +98,7 @@ func UpdateShortUrl(c *gin.Context) {
 		return
 	}
 
-	updatedUrl, err := store.UpdateUrlMapping(shortUrl, updateShortUrlRequest.LongUrl, updateShortUrlRequest.UserId)
+	updatedUrl, err := h.store.UpdateUrlMapping(c.Request.Context(), shortUrl, updateShortUrlRequest.LongUrl, updateShortUrlRequest.UserId)
 	if errors.Is(err, redis.Nil) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
 		return
@@ -105,7 +120,7 @@ func UpdateShortUrl(c *gin.Context) {
 	})
 }
 
-func DeleteShortUrl(c *gin.Context) {
+func (h *Handler) DeleteShortUrl(c *gin.Context) {
 	shortUrl := c.Param("shortUrl")
 
 	var deleteShortUrlRequest UrlDeletionRequest
@@ -113,7 +128,7 @@ func DeleteShortUrl(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	deletedUrl, err := store.DeleteUrlMapping(shortUrl, deleteShortUrlRequest.UserId)
+	deletedUrl, err := h.store.DeleteUrlMapping(c.Request.Context(), shortUrl, deleteShortUrlRequest.UserId)
 	if errors.Is(err, redis.Nil) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
 		return
@@ -134,10 +149,10 @@ func DeleteShortUrl(c *gin.Context) {
 	})
 }
 
-func GetShortUrlClicks(c *gin.Context) {
+func (h *Handler) GetShortUrlClicks(c *gin.Context) {
 	shortUrl := c.Param("shortUrl")
 
-	count, err := store.RetrieveClickCount(shortUrl)
+	count, err := h.store.RetrieveClickCount(c.Request.Context(), shortUrl)
 	if errors.Is(err, redis.Nil) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
 		return

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	stdcontext "context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,9 +19,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	testStoreService *store.StorageService
+	testHandler      *Handler
+)
+
 func TestMain(m *testing.M) {
-	store.InitializeStore()
-	os.Exit(m.Run())
+	service, err := store.NewStore(stdcontext.Background())
+	if err != nil {
+		panic(err)
+	}
+	testStoreService = service
+	testHandler = NewHandler(service)
+	code := m.Run()
+	_ = service.Close()
+	os.Exit(code)
 }
 
 func newHandlerContext(method string, path string, body string) (*gin.Context, *httptest.ResponseRecorder) {
@@ -36,7 +49,7 @@ func TestCreateShortUrlRejectsInvalidRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	context, response := newHandlerContext(http.MethodPost, "/create-short-url", `{"longUrl":"not-a-url","userId":"user"}`)
 
-	CreateShortUrl(context)
+	testHandler.CreateShortUrl(context)
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 	assert.Contains(t, response.Body.String(), "error")
@@ -48,11 +61,11 @@ func TestCreateShortUrlReturnsAndPersistsShortUrl(t *testing.T) {
 	userID := "handler-create-owner"
 	shortURL := shortener.GenerateShortLink(longURL, userID)
 	t.Cleanup(func() {
-		_, _ = store.DeleteUrlMapping(shortURL, userID)
+		_, _ = testStoreService.DeleteUrlMapping(stdcontext.Background(), shortURL, userID)
 	})
 
 	context, response := newHandlerContext(http.MethodPost, "/create-short-url", fmt.Sprintf(`{"longUrl":%q,"userId":%q}`, longURL, userID))
-	CreateShortUrl(context)
+	testHandler.CreateShortUrl(context)
 
 	require.Equal(t, http.StatusOK, response.Code)
 	var body struct {
@@ -61,7 +74,7 @@ func TestCreateShortUrlReturnsAndPersistsShortUrl(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	assert.Contains(t, body.ShortURL, shortURL)
 
-	retrievedURL, err := store.RetrieveInitialUrl(shortURL)
+	retrievedURL, err := testStoreService.RetrieveInitialUrl(stdcontext.Background(), shortURL)
 	require.NoError(t, err)
 	assert.Equal(t, longURL, retrievedURL)
 }
@@ -72,22 +85,22 @@ func TestUpdateShortUrlEnforcesOwner(t *testing.T) {
 	originalURL := "https://example.com/original"
 	updatedURL := "https://example.com/updated"
 	ownerID := "handler-update-owner"
-	require.NoError(t, store.SaveUrlMapping(shortURL, originalURL, ownerID))
+	require.NoError(t, testStoreService.SaveUrlMapping(stdcontext.Background(), shortURL, originalURL, ownerID))
 	t.Cleanup(func() {
-		_, _ = store.DeleteUrlMapping(shortURL, ownerID)
+		_, _ = testStoreService.DeleteUrlMapping(stdcontext.Background(), shortURL, ownerID)
 	})
 
 	wrongContext, wrongResponse := newHandlerContext(http.MethodPatch, "/"+shortURL, fmt.Sprintf(`{"longUrl":%q,"userId":"wrong-owner"}`, updatedURL))
 	wrongContext.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
-	UpdateShortUrl(wrongContext)
+	testHandler.UpdateShortUrl(wrongContext)
 	assert.Equal(t, http.StatusForbidden, wrongResponse.Code)
 
 	correctContext, correctResponse := newHandlerContext(http.MethodPatch, "/"+shortURL, fmt.Sprintf(`{"longUrl":%q,"userId":%q}`, updatedURL, ownerID))
 	correctContext.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
-	UpdateShortUrl(correctContext)
+	testHandler.UpdateShortUrl(correctContext)
 	assert.Equal(t, http.StatusOK, correctResponse.Code)
 
-	retrievedURL, err := store.RetrieveInitialUrl(shortURL)
+	retrievedURL, err := testStoreService.RetrieveInitialUrl(stdcontext.Background(), shortURL)
 	require.NoError(t, err)
 	assert.Equal(t, updatedURL, retrievedURL)
 }
@@ -97,14 +110,14 @@ func TestHandleShortUrlRedirectReturnsDestination(t *testing.T) {
 	shortURL := fmt.Sprintf("handler-redirect-%d", time.Now().UnixNano())
 	ownerID := "handler-redirect-owner"
 	destination := "https://example.com/redirect-destination"
-	require.NoError(t, store.SaveUrlMapping(shortURL, destination, ownerID))
+	require.NoError(t, testStoreService.SaveUrlMapping(stdcontext.Background(), shortURL, destination, ownerID))
 	t.Cleanup(func() {
-		_, _ = store.DeleteUrlMapping(shortURL, ownerID)
+		_, _ = testStoreService.DeleteUrlMapping(stdcontext.Background(), shortURL, ownerID)
 	})
 
 	context, response := newHandlerContext(http.MethodGet, "/"+shortURL, "")
 	context.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
-	HandleShortUrlRedirect(context)
+	testHandler.HandleShortUrlRedirect(context)
 
 	assert.Equal(t, http.StatusFound, response.Code)
 	assert.Equal(t, destination, response.Header().Get("Location"))
@@ -116,7 +129,7 @@ func TestHandleShortUrlRedirectReturnsNotFound(t *testing.T) {
 	context, response := newHandlerContext(http.MethodGet, "/"+shortURL, "")
 	context.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
 
-	HandleShortUrlRedirect(context)
+	testHandler.HandleShortUrlRedirect(context)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
 	assert.Contains(t, response.Body.String(), "short url not found")
@@ -126,19 +139,19 @@ func TestDeleteShortUrlEnforcesOwnerAndRemovesMapping(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	shortURL := fmt.Sprintf("handler-delete-%d", time.Now().UnixNano())
 	ownerID := "handler-delete-owner"
-	require.NoError(t, store.SaveUrlMapping(shortURL, "https://example.com/delete", ownerID))
+	require.NoError(t, testStoreService.SaveUrlMapping(stdcontext.Background(), shortURL, "https://example.com/delete", ownerID))
 
 	wrongContext, wrongResponse := newHandlerContext(http.MethodDelete, "/"+shortURL, `{"userId":"wrong-owner"}`)
 	wrongContext.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
-	DeleteShortUrl(wrongContext)
+	testHandler.DeleteShortUrl(wrongContext)
 	assert.Equal(t, http.StatusForbidden, wrongResponse.Code)
 
 	correctContext, correctResponse := newHandlerContext(http.MethodDelete, "/"+shortURL, fmt.Sprintf(`{"userId":%q}`, ownerID))
 	correctContext.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
-	DeleteShortUrl(correctContext)
+	testHandler.DeleteShortUrl(correctContext)
 	assert.Equal(t, http.StatusOK, correctResponse.Code)
 
-	_, err := store.RetrieveInitialUrl(shortURL)
+	_, err := testStoreService.RetrieveInitialUrl(stdcontext.Background(), shortURL)
 	assert.ErrorIs(t, err, redis.Nil)
 }
 
@@ -146,15 +159,15 @@ func TestGetShortUrlClicksReturnsCount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	shortURL := fmt.Sprintf("handler-count-%d", time.Now().UnixNano())
 	ownerID := "handler-count-owner"
-	require.NoError(t, store.SaveUrlMapping(shortURL, "https://example.com/count", ownerID))
+	require.NoError(t, testStoreService.SaveUrlMapping(stdcontext.Background(), shortURL, "https://example.com/count", ownerID))
 	t.Cleanup(func() {
-		_, _ = store.DeleteUrlMapping(shortURL, ownerID)
+		_, _ = testStoreService.DeleteUrlMapping(stdcontext.Background(), shortURL, ownerID)
 	})
 	require.NoError(t, incrementClicks(shortURL, 2))
 
 	context, response := newHandlerContext(http.MethodGet, "/"+shortURL+"/count", "")
 	context.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
-	GetShortUrlClicks(context)
+	testHandler.GetShortUrlClicks(context)
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.Contains(t, response.Body.String(), `"clicks":2`)
@@ -166,7 +179,7 @@ func TestGetShortUrlClicksReturnsNotFound(t *testing.T) {
 	context, response := newHandlerContext(http.MethodGet, "/"+shortURL+"/count", "")
 	context.Params = gin.Params{{Key: "shortUrl", Value: shortURL}}
 
-	GetShortUrlClicks(context)
+	testHandler.GetShortUrlClicks(context)
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
 	assert.Contains(t, response.Body.String(), "short url not found")
@@ -174,7 +187,7 @@ func TestGetShortUrlClicksReturnsNotFound(t *testing.T) {
 
 func incrementClicks(shortURL string, count int) error {
 	for range count {
-		if _, err := store.IncrementClickCount(shortURL); err != nil {
+		if _, err := testStoreService.IncrementClickCount(stdcontext.Background(), shortURL); err != nil {
 			return err
 		}
 	}

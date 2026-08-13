@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -8,11 +9,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-var ErrAlreadyExists = errors.New("short_url already exists")
-
 // insertUrl inserts a new short_url -> long_url mapping owned by userId.
-func insertUrl(shortUrl, longUrl, userId string) error {
-	_, err := storeService.pgPool.Exec(ctx,
+func (s *StorageService) insertUrl(ctx context.Context, shortUrl, longUrl, userId string) error {
+	_, err := s.pgPool.Exec(ctx,
 		`INSERT INTO urls (short_url, long_url, user_id) VALUES ($1, $2, $3)`,
 		shortUrl, longUrl, userId,
 	)
@@ -28,8 +27,8 @@ func insertUrl(shortUrl, longUrl, userId string) error {
 }
 
 // getUrlByShortCode returns the long URL and owning user ID for a short code.
-func getUrlByShortCode(shortUrl string) (longUrl string, userId string, err error) {
-	err = storeService.pgPool.QueryRow(ctx,
+func (s *StorageService) getUrlByShortCode(ctx context.Context, shortUrl string) (longUrl string, userId string, err error) {
+	err = s.pgPool.QueryRow(ctx,
 		`SELECT long_url, user_id FROM urls WHERE short_url = $1`,
 		shortUrl,
 	).Scan(&longUrl, &userId)

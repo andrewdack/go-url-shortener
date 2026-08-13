@@ -1,14 +1,31 @@
 package router
 
 import (
+	stdcontext "context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
+	"github.com/andrewdack/go-url-shortener/handler"
+	"github.com/andrewdack/go-url-shortener/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var testHandler *handler.Handler
+
+func TestMain(m *testing.M) {
+	service, err := store.NewStore(stdcontext.Background())
+	if err != nil {
+		panic(err)
+	}
+	testHandler = handler.NewHandler(service)
+	code := m.Run()
+	_ = service.Close()
+	os.Exit(code)
+}
 
 func TestSetupRouterHealthCheck(t *testing.T) {
 	t.Parallel()
@@ -17,7 +34,7 @@ func TestSetupRouterHealthCheck(t *testing.T) {
 	request.Header.Set("Origin", "http://localhost:5173")
 	response := httptest.NewRecorder()
 
-	SetupRouter().ServeHTTP(response, request)
+	SetupRouter(testHandler).ServeHTTP(response, request)
 
 	require.Equal(t, http.StatusOK, response.Code)
 	assert.Equal(t, "http://localhost:5173", response.Header().Get("Access-Control-Allow-Origin"))
@@ -52,7 +69,7 @@ func TestSetupRouterHandlesFrontendPreflights(t *testing.T) {
 			request.Header.Set("Access-Control-Request-Headers", "content-type")
 			response := httptest.NewRecorder()
 
-			SetupRouter().ServeHTTP(response, request)
+			SetupRouter(testHandler).ServeHTTP(response, request)
 
 			assert.Equal(t, http.StatusNoContent, response.Code)
 			assert.Equal(t, "http://localhost:5173", response.Header().Get("Access-Control-Allow-Origin"))
@@ -64,7 +81,7 @@ func TestSetupRouterHandlesFrontendPreflights(t *testing.T) {
 func TestSetupRouterRegistersExpectedRoutes(t *testing.T) {
 	t.Parallel()
 
-	routes := SetupRouter().Routes()
+	routes := SetupRouter(testHandler).Routes()
 	registered := make(map[string]bool, len(routes))
 	for _, route := range routes {
 		registered[route.Method+" "+route.Path] = true

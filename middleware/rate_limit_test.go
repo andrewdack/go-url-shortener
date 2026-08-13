@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,9 +16,17 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	store.InitializeStore()
-	os.Exit(m.Run())
+	service, err := store.NewStore(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	testStoreService = service
+	code := m.Run()
+	_ = service.Close()
+	os.Exit(code)
 }
+
+var testStoreService *store.StorageService
 
 func TestRateLimitAllowsRequestsUpToLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -25,7 +34,7 @@ func TestRateLimitAllowsRequestsUpToLimit(t *testing.T) {
 	window := time.Minute
 
 	router := gin.New()
-	router.Use(RateLimit(2, window))
+	router.Use(RateLimit(testStoreService, 2, window))
 	router.POST("/resource", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -46,7 +55,7 @@ func TestRateLimitRejectsRequestsOverLimit(t *testing.T) {
 	clientIP := uniqueTestIP("203")
 
 	router := gin.New()
-	router.Use(RateLimit(1, time.Minute))
+	router.Use(RateLimit(testStoreService, 1, time.Minute))
 	router.POST("/resource", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
