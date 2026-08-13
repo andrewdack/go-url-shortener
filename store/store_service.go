@@ -28,10 +28,12 @@ const CacheDuration = 6 * time.Hour
 
 var ErrUserIdMismatch = errors.New("user ID does not own short URL")
 
+// ownerKey generates the Redis key for storing the owner (user ID) of a given short URL.
 func ownerKey(shortUrl string) string {
 	return fmt.Sprintf("owner:%s", shortUrl)
 }
 
+// clicksKey generates the Redis key for storing the click count of a given short URL.
 func clicksKey(shortUrl string) string {
 	return fmt.Sprintf("clicks:%s", shortUrl)
 }
@@ -162,7 +164,8 @@ func IncrementRateLimitCounter(key string, window time.Duration) (int64, error) 
 
 // IncrementClickCount increments the click count for a given short URL key in the storage service.
 // Returns the updated click count and errors, if any.
-func IncrementClickCount(key string, shortUrl string) (int64, error) {
+func IncrementClickCount(shortUrl string) (int64, error) {
+	key := clicksKey(shortUrl)
 	count, err := storeService.redisClient.Incr(ctx, key).Result()
 	if err != nil {
 		return 0, fmt.Errorf("failed incrementing click for %s: %w", shortUrl, err)

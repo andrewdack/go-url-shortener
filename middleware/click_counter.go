@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 
@@ -13,7 +12,7 @@ import (
 // successful redirect — so a 404 on a dead link isn't counted as a click.
 func ClickCounter(c *gin.Context) {
 	// Because we only increment counter on successful redirect, handle the route first
-	c.Next()
+	c.Next()	
 
 	// Redirect failed, don't increment
 	if c.Writer.Status() != http.StatusFound {
@@ -21,8 +20,7 @@ func ClickCounter(c *gin.Context) {
 	}
 
 	shortUrl := c.Param("shortUrl")
-	key := fmt.Sprintf("clicks:%s", shortUrl)
-	if _, err := store.IncrementClickCount(key, shortUrl); err != nil {
+	if _, err := store.IncrementClickCount(shortUrl); err != nil {
 		log.Printf("failed to increment click count for %s: %v", shortUrl, err)
 	}
 }
