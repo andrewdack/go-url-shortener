@@ -3,6 +3,7 @@ package handler
 // import gin
 import (
 	"errors"
+	"log"
 	"net/http"
 	"os"
 
@@ -16,8 +17,17 @@ import (
 type UrlCreationRequest struct {
 	// Public fields cuz capitalized fields
 	// The backtick text after each field is a struct tag
-	LongUrl string `json:"longUrl" binding:"required, url"`
+	LongUrl string `json:"longUrl" binding:"required,url"`
 	UserId  string `json:"userId" binding:"required"`
+}
+
+type UrlUpdateRequest struct {
+	LongUrl string `json:"longUrl" binding:"required,url"`
+	UserId  string `json:"userId" binding:"required"`
+}
+
+type UrlDeletionRequest struct {
+	UserId string `json:"userId" binding:"required"`
 }
 
 func CreateShortUrl(c *gin.Context) {
@@ -33,6 +43,7 @@ func CreateShortUrl(c *gin.Context) {
 
 	shortURL := shortener.GenerateShortLink(createShortUrlRequest.LongUrl, createShortUrlRequest.UserId)
 	if err := store.SaveUrlMapping(shortURL, createShortUrlRequest.LongUrl, createShortUrlRequest.UserId); err != nil {
+		log.Printf("failed to save short url mapping: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save short url"})
 		return
 	}
@@ -56,8 +67,89 @@ func HandleShortUrlRedirect(c *gin.Context) {
 		return
 	}
 	if err != nil {
+		log.Printf("failed to retrieve short url %s: %v", shortUrl, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve short url"})
 		return
 	}
 	c.Redirect(http.StatusFound, initialUrl)
+}
+
+func UpdateShortUrl(c *gin.Context) {
+	shortUrl := c.Param("shortUrl")
+
+	var updateShortUrlRequest UrlUpdateRequest
+	if err := c.ShouldBindJSON(&updateShortUrlRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updatedUrl, err := store.UpdateUrlMapping(shortUrl, updateShortUrlRequest.LongUrl, updateShortUrlRequest.UserId)
+	if errors.Is(err, redis.Nil) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
+		return
+	}
+	if errors.Is(err, store.ErrUserIdMismatch) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "user does not own short url"})
+		return
+	}
+	if err != nil {
+		log.Printf("failed to update short url %s: %v", shortUrl, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update short url"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Short URL updated successfully",
+		"shortUrl": shortUrl,
+		"longUrl":  updatedUrl,
+	})
+}
+
+func DeleteShortUrl(c *gin.Context) {
+	shortUrl := c.Param("shortUrl")
+
+	var deleteShortUrlRequest UrlDeletionRequest
+	if err := c.ShouldBindJSON(&deleteShortUrlRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	deletedUrl, err := store.DeleteUrlMapping(shortUrl, deleteShortUrlRequest.UserId)
+	if errors.Is(err, redis.Nil) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
+		return
+	}
+	if errors.Is(err, store.ErrUserIdMismatch) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "user does not own short url"})
+		return
+	}
+	if err != nil {
+		log.Printf("failed to delete short url %s: %v", shortUrl, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete short url"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Short URL deleted successfully",
+		"shortUrl": deletedUrl,
+	})
+}
+
+func GetShortUrlClicks(c *gin.Context) {
+	shortUrl := c.Param("shortUrl")
+
+	count, err := store.RetrieveClickCount(shortUrl)
+	if errors.Is(err, redis.Nil) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "short url not found"})
+		return
+	}
+	if err != nil {
+		log.Printf("failed to retrieve click count for %s: %v", shortUrl, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve click count"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"shortUrl": shortUrl,
+		"clicks":   count,
+	})
 }

@@ -31,3 +31,28 @@ func TestInsertionAndRetrieval(t *testing.T) {
 
 	assert.Equal(t, initialLink, retrievedUrl)
 }
+
+func TestUpdateUrlMappingRequiresMatchingUserId(t *testing.T) {
+	shortURL := "update-owner-test"
+	originalURL := "https://example.com/original"
+	updatedURL := "https://example.com/updated"
+	ownerID := "owner-user-id"
+
+	t.Cleanup(func() {
+		testStoreService.redisClient.Del(ctx, shortURL, ownerKey(shortURL))
+	})
+
+	err := SaveUrlMapping(shortURL, originalURL, ownerID)
+	assert.NoError(t, err)
+
+	_, err = UpdateUrlMapping(shortURL, updatedURL, "different-user-id")
+	assert.ErrorIs(t, err, ErrUserIdMismatch)
+
+	retrievedURL, err := RetrieveInitialUrl(shortURL)
+	assert.NoError(t, err)
+	assert.Equal(t, originalURL, retrievedURL)
+
+	result, err := UpdateUrlMapping(shortURL, updatedURL, ownerID)
+	assert.NoError(t, err)
+	assert.Equal(t, updatedURL, result)
+}
