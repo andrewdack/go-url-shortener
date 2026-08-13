@@ -1,7 +1,7 @@
-# Compose defines two services: 
-# 1. redis: a Redis server running in a Docker container on port 6379
-# 2. backend: a backend service that depends on the Redis server and runs on port 9808
-#             and takes envs for Redis address and environment mode.
+# Compose defines three services:
+# 1. redis: a Redis server running in a Docker container on port 6379, used as a cache
+# 2. postgres: a Postgres server on port 5432, the durable source of truth for URL mappings
+# 3. backend: go backend service that depends on both and runs on port 9808
 services:
   redis:
     image: redis:7-alpine
@@ -24,6 +24,31 @@ services:
     networks:
       - app-net
 
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+      POSTGRES_DB: shortener
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener -d shortener"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-net
+
   backend:
     build:
       context: .
@@ -31,8 +56,11 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       REDIS_ADDR: redis:6379
+      DATABASE_URL: postgres://shortener:shortener@postgres:5432/shortener?sslmode=disable
       PUBLIC_HOST: http://localhost:9808/
       ENV: development
     ports:
@@ -57,7 +85,8 @@ networks:
   app-net:
     driver: bridge
 
-# persistent volume for Redis data
+# persistent volumes for Redis and Postgres data
 volumes:
   redis-data:
-  
+  postgres-data:
+
