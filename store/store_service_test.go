@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,5 +76,5 @@ func TestClickCountRequiresExistingShortURL(t *testing.T) {
 	shortURL := "missing-click-count-test"
 
 	_, err := testStoreService.RetrieveClickCount(ctx, shortURL)
-	assert.ErrorIs(t, err, redis.Nil)
+	assert.ErrorIs(t, err, ErrNotFound)
 }

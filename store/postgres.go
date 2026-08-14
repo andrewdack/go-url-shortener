@@ -41,3 +41,30 @@ func (s *StorageService) getUrlByShortCode(ctx context.Context, shortUrl string)
 	}
 	return longUrl, userId, nil
 }
+
+// updateUrl updates the long URL for an existing short_url row.
+func (s *StorageService) updateUrl(ctx context.Context, shortUrl, newLongUrl string) error {
+	tag, err := s.pgPool.Exec(ctx,
+		`UPDATE urls SET long_url = $1, updated_at = now() WHERE short_url = $2`,
+		newLongUrl, shortUrl,
+	)
+	if err != nil {
+		return fmt.Errorf("failed updating url %s: %w", shortUrl, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// deleteUrl deletes the row for shortUrl.
+func (s *StorageService) deleteUrl(ctx context.Context, shortUrl string) error {
+	tag, err := s.pgPool.Exec(ctx, `DELETE FROM urls WHERE short_url = $1`, shortUrl)
+	if err != nil {
+		return fmt.Errorf("failed deleting url %s: %w", shortUrl, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -83,14 +84,14 @@ func (s *StorageService) Close() error {
 // SaveUrlMapping saves a mapping between a short URL and its original long URL in the storage service.
 // Returns an error if the operation fails.
 func (s *StorageService) SaveUrlMapping(ctx context.Context, shortUrl string, originalUrl string, userId string) error {
-	_, err := s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Set(ctx, shortUrl, originalUrl, CacheDuration)
-		pipe.Set(ctx, ownerKey(shortUrl), userId, CacheDuration)
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed saving key url - shortUrl: %s - originalUrl: %s: %w", shortUrl, originalUrl, err)
+	if err := s.insertUrl(ctx, shortUrl, originalUrl, userId); err != nil {
+		return err // includes ErrAlreadyExists
 	}
+
+	if err := s.setCachedUrl(ctx, shortUrl, originalUrl); err != nil {
+		log.Printf("failed warming cache for %s: %v", shortUrl, err)
+	}
+
 	return nil
 }
 
@@ -98,69 +99,63 @@ func (s *StorageService) SaveUrlMapping(ctx context.Context, shortUrl string, or
 // Returns the long URL and an error if the operation fails.
 // Will be used when a user accesses the short URL to retrieve the original long URL for redirection.
 func (s *StorageService) RetrieveInitialUrl(ctx context.Context, shortUrl string) (string, error) {
-	result, err := s.redisClient.Get(ctx, shortUrl).Result()
-	if err != nil {
-		return "", fmt.Errorf("failed retrieving short url %s: %w", shortUrl, err)
+	cached, err := s.getCachedUrl(ctx, shortUrl)
+	if err == nil {
+		return cached, nil
 	}
-	return result, nil
+	if !errors.Is(err, redis.Nil) {
+		log.Printf("cache read failed for %s, falling back to postgres: %v", shortUrl, err)
+	}
+
+	longUrl, _, err := s.getUrlByShortCode(ctx, shortUrl)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.setCachedUrl(ctx, shortUrl, longUrl); err != nil {
+		log.Printf("failed warming cache for %s: %v", shortUrl, err)
+	}
+	return longUrl, nil
 }
 
 // DeleteUrlMapping deletes a shortUrl key mapping from the storage service
 // Returns the deleted Url and errors, if any.
 func (s *StorageService) DeleteUrlMapping(ctx context.Context, shortUrl string, userId string) (deletedUrl string, err error) {
-	_, err = s.RetrieveInitialUrl(ctx, shortUrl)
+	_, storedUserId, err := s.getUrlByShortCode(ctx, shortUrl)
 	if err != nil {
 		return "", err
-	}
-
-	storedUserId, err := s.redisClient.Get(ctx, ownerKey(shortUrl)).Result()
-	if errors.Is(err, redis.Nil) {
-		return "", ErrUserIdMismatch
-	}
-	if err != nil {
-		return "", fmt.Errorf("failed retrieving owner for short url %s: %w", shortUrl, err)
 	}
 	if storedUserId != userId {
 		return "", ErrUserIdMismatch
 	}
 
-	_, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Del(ctx, shortUrl, ownerKey(shortUrl), clicksKey(shortUrl))
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed deleting short url %s: %w", shortUrl, err)
+	if err := s.deleteUrl(ctx, shortUrl); err != nil {
+		return "", err
 	}
-	return shortUrl, err
+
+	if err := s.redisClient.Del(ctx, shortUrl, clicksKey(shortUrl)).Err(); err != nil {
+		log.Printf("failed evicting cache for %s: %v", shortUrl, err)
+	}
+	return shortUrl, nil
 }
 
 // UpdateUrlMapping updates the long URL associated with a given short URL in the storage service.
 // Returns the new long URL and errors, if any.
 func (s *StorageService) UpdateUrlMapping(ctx context.Context, shortUrl string, newLongUrl string, userId string) (updatedUrl string, err error) {
-	oldLongUrl, err := s.RetrieveInitialUrl(ctx, shortUrl)
+	oldLongUrl, storedUserId, err := s.getUrlByShortCode(ctx, shortUrl)
 	if err != nil {
 		return "", err
-	}
-
-	storedUserId, err := s.redisClient.Get(ctx, ownerKey(shortUrl)).Result()
-	if errors.Is(err, redis.Nil) {
-		return oldLongUrl, ErrUserIdMismatch
-	}
-	if err != nil {
-		return oldLongUrl, fmt.Errorf("failed retrieving owner for short url %s: %w", shortUrl, err)
 	}
 	if storedUserId != userId {
 		return oldLongUrl, ErrUserIdMismatch
 	}
 
-	_, err = s.redisClient.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Set(ctx, shortUrl, newLongUrl, CacheDuration)
-		pipe.Expire(ctx, ownerKey(shortUrl), CacheDuration)
-		return nil
-	})
+	if err := s.updateUrl(ctx, shortUrl, newLongUrl); err != nil {
+		return oldLongUrl, err
+	}
 
-	if err != nil {
-		return oldLongUrl, fmt.Errorf("failed updating short url %s: %w", shortUrl, err)
+	if err := s.setCachedUrl(ctx, shortUrl, newLongUrl); err != nil {
+		log.Printf("failed refreshing cache for %s: %v", shortUrl, err)
 	}
 	return newLongUrl, nil
 }

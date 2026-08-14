@@ -14,7 +14,6 @@ import (
 	"github.com/andrewdack/go-url-shortener/shortener"
 	"github.com/andrewdack/go-url-shortener/store"
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -152,7 +151,7 @@ func TestDeleteShortUrlEnforcesOwnerAndRemovesMapping(t *testing.T) {
 	assert.Equal(t, http.StatusOK, correctResponse.Code)
 
 	_, err := testStoreService.RetrieveInitialUrl(stdcontext.Background(), shortURL)
-	assert.ErrorIs(t, err, redis.Nil)
+	assert.ErrorIs(t, err, store.ErrNotFound)
 }
 
 func TestGetShortUrlClicksReturnsCount(t *testing.T) {
