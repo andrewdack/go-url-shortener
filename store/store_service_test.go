@@ -78,3 +78,29 @@ func TestClickCountRequiresExistingShortURL(t *testing.T) {
 	_, err := testStoreService.RetrieveClickCount(ctx, shortURL)
 	assert.ErrorIs(t, err, ErrNotFound)
 }
+
+func TestClickCountFallsBackToPostgresOnCacheMiss(t *testing.T) {
+	ctx := context.Background()
+	shortURL := "fresh-click-count-test"
+	ownerID := "click-count-owner"
+
+	t.Cleanup(func() {
+		_, _ = testStoreService.DeleteUrlMapping(ctx, shortURL, ownerID)
+	})
+
+	require.NoError(t, testStoreService.SaveUrlMapping(ctx, shortURL, "https://example.com/fresh", ownerID))
+
+	// No click has happened yet, so there's no clicksKey in Redis at all —
+	// this must fall back to Postgres and return 0, not error.
+	count, err := testStoreService.RetrieveClickCount(ctx, shortURL)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), count)
+
+	updated, err := testStoreService.IncrementClickCount(ctx, shortURL)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), updated)
+
+	cached, err := testStoreService.RetrieveClickCount(ctx, shortURL)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), cached)
+}
