@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -84,7 +85,7 @@ func (s *StorageService) Close() error {
 // SaveUrlMapping saves a mapping between a short URL and its original long URL in the storage service.
 // Returns an error if the operation fails.
 func (s *StorageService) SaveUrlMapping(ctx context.Context, shortUrl string, originalUrl string, userId string) error {
-	if err := s.insertUrl(ctx, shortUrl, originalUrl, userId); err != nil {
+	if err := s.dbInsertUrl(ctx, shortUrl, originalUrl, userId); err != nil {
 		return err // includes ErrAlreadyExists
 	}
 
@@ -107,7 +108,7 @@ func (s *StorageService) RetrieveInitialUrl(ctx context.Context, shortUrl string
 		log.Printf("cache read failed for %s, falling back to postgres: %v", shortUrl, err)
 	}
 
-	longUrl, _, err := s.getUrlByShortCode(ctx, shortUrl)
+	longUrl, _, err := s.dbGetUrl(ctx, shortUrl)
 	if err != nil {
 		return "", err
 	}
@@ -121,7 +122,7 @@ func (s *StorageService) RetrieveInitialUrl(ctx context.Context, shortUrl string
 // DeleteUrlMapping deletes a shortUrl key mapping from the storage service
 // Returns the deleted Url and errors, if any.
 func (s *StorageService) DeleteUrlMapping(ctx context.Context, shortUrl string, userId string) (deletedUrl string, err error) {
-	_, storedUserId, err := s.getUrlByShortCode(ctx, shortUrl)
+	_, storedUserId, err := s.dbGetUrl(ctx, shortUrl)
 	if err != nil {
 		return "", err
 	}
@@ -129,12 +130,12 @@ func (s *StorageService) DeleteUrlMapping(ctx context.Context, shortUrl string, 
 		return "", ErrUserIdMismatch
 	}
 
-	if err := s.deleteUrl(ctx, shortUrl); err != nil {
+	if err := s.dbDeleteUrl(ctx, shortUrl); err != nil {
 		return "", err
 	}
 
-	if err := s.redisClient.Del(ctx, shortUrl, clicksKey(shortUrl)).Err(); err != nil {
-		log.Printf("failed evicting cache for %s: %v", shortUrl, err)
+	if err := s.delCachedUrl(ctx, shortUrl); err != nil {
+		log.Printf("error deleting cached url: %v", err)
 	}
 	return shortUrl, nil
 }
@@ -142,7 +143,7 @@ func (s *StorageService) DeleteUrlMapping(ctx context.Context, shortUrl string, 
 // UpdateUrlMapping updates the long URL associated with a given short URL in the storage service.
 // Returns the new long URL and errors, if any.
 func (s *StorageService) UpdateUrlMapping(ctx context.Context, shortUrl string, newLongUrl string, userId string) (updatedUrl string, err error) {
-	oldLongUrl, storedUserId, err := s.getUrlByShortCode(ctx, shortUrl)
+	oldLongUrl, storedUserId, err := s.dbGetUrl(ctx, shortUrl)
 	if err != nil {
 		return "", err
 	}
@@ -150,7 +151,7 @@ func (s *StorageService) UpdateUrlMapping(ctx context.Context, shortUrl string, 
 		return oldLongUrl, ErrUserIdMismatch
 	}
 
-	if err := s.updateUrl(ctx, shortUrl, newLongUrl); err != nil {
+	if err := s.dbUpdateUrl(ctx, shortUrl, newLongUrl); err != nil {
 		return oldLongUrl, err
 	}
 
@@ -180,32 +181,41 @@ func (s *StorageService) IncrementRateLimitCounter(ctx context.Context, key stri
 // IncrementClickCount increments the click count for a given short URL key in the storage service.
 // Returns the updated click count and errors, if any.
 func (s *StorageService) IncrementClickCount(ctx context.Context, shortUrl string) (int64, error) {
-	key := clicksKey(shortUrl)
-	count, err := s.redisClient.Incr(ctx, key).Result()
+	// only postgres does the incrementing
+	count, err := s.dbIncrementClickCount(ctx, shortUrl)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return -1, ErrNotFound
+	}
 	if err != nil {
-		return 0, fmt.Errorf("failed incrementing click for %s: %w", shortUrl, err)
+		return -1, fmt.Errorf("error incrementing click counter for %v", shortUrl)
 	}
 
-	if count == 1 {
-		if err := s.redisClient.Expire(ctx, key, CacheDuration).Err(); err != nil {
-			return 0, fmt.Errorf("failed setting ex for %s: %w", shortUrl, err)
-		}
+	// refresh the click cache for Redis to copy postgres
+	if err := s.setCachedUrlClickCounter(ctx, shortUrl, int(count)); err != nil {
+		log.Printf("error: %v", err)
 	}
+	
 	return count, nil
 }
 
 // RetrieveClickCount returns the number of successful redirects for a short URL.
 func (s *StorageService) RetrieveClickCount(ctx context.Context, shortUrl string) (int64, error) {
-	if _, err := s.RetrieveInitialUrl(ctx, shortUrl); err != nil {
+	cached, err := s.getCachedUrlClickCounter(ctx, shortUrl)
+	if err == nil {
+		return cached, nil
+	}
+	if !errors.Is(err, redis.Nil) {
+		log.Printf("click count cache read failed for %s, falling back to postgres: %v", shortUrl, err)
+	}
+
+	count, err := s.dbGetClickCount(ctx, shortUrl)
+	if err != nil {
 		return 0, err
 	}
 
-	count, err := s.redisClient.Get(ctx, clicksKey(shortUrl)).Int64()
-	if errors.Is(err, redis.Nil) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, fmt.Errorf("failed retrieving click count for %s: %w", shortUrl, err)
+	if err := s.setCachedUrlClickCounter(ctx, shortUrl, int(count)); err != nil {
+		log.Printf("failed warming click count cache for %s: %v", shortUrl, err)
 	}
 	return count, nil
 }
