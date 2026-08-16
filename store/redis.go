@@ -16,9 +16,11 @@ func (s *StorageService) getCachedUrl(ctx context.Context, shortUrl string) (str
 	return result, nil
 }
 
-// setCachedUrl caches longUrl for shortUrl.
+// setCachedUrl caches longUrl for shortUrl. No TTL is set — Postgres is the
+// durable copy, so eviction is left entirely to Redis's allkeys-lru policy
+// instead of a blind expiration clock.
 func (s *StorageService) setCachedUrl(ctx context.Context, shortUrl string, longUrl string) error {
-	if err := s.redisClient.Set(ctx, shortUrl, longUrl, CacheDuration).Err(); err != nil {
+	if err := s.redisClient.Set(ctx, shortUrl, longUrl, 0).Err(); err != nil {
 		return fmt.Errorf("failed caching url %s: %w", shortUrl, err)
 	}
 	return nil

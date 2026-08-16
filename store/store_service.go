@@ -19,11 +19,6 @@ type StorageService struct {
 	pgPool      *pgxpool.Pool
 }
 
-// Note that in real world the cache duration shouldn't have an expiration time
-// but rather an LRU policy where values that are retrieved less often are
-// purged automatically from the cache and stored back in RDBMS whenever cache is full
-const CacheDuration = 6 * time.Hour
-
 // NewStore initializes and returns a new instance of StorageService with Redis and Postgres connections set up.
 // It returns an error if any of the initializations fail.
 func NewStore(ctx context.Context) (*StorageService, error) {
