@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -23,19 +24,28 @@ type StorageService struct {
 // It returns an error if any of the initializations fail.
 func NewStore(ctx context.Context) (*StorageService, error) {
 	// Initialize Redis Cache
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = os.Getenv("REDIS_ADDR")
+	}
+	if redisURL == "" {
+		redisURL = "localhost:6379"
 	}
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: "",
-		DB:       0,
-	})
+	redisOptions := &redis.Options{Addr: redisURL}
+	if strings.Contains(redisURL, "://") {
+		var err error
+		redisOptions, err = redis.ParseURL(redisURL)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing Redis URL: %v", err)
+		}
+	}
+
+	redisClient := redis.NewClient(redisOptions)
 
 	pong, err := redisClient.Ping(ctx).Result()
 	if err != nil {
+		_ = redisClient.Close()
 		return nil, fmt.Errorf("Error init Redis: %v", err)
 	}
 	fmt.Printf("\nRedis started successfully: pong message = {%s}", pong)
@@ -47,17 +57,20 @@ func NewStore(ctx context.Context) (*StorageService, error) {
 	}
 	pgPool, err := pgxpool.New(ctx, databaseUrl)
 	if err != nil {
+		_ = redisClient.Close()
 		return nil, fmt.Errorf("Error init postgres: %v", err)
 	}
 
 	if err := pgPool.Ping(ctx); err != nil {
-		panic(fmt.Sprintf("Error connecting to Postgres: %v", err))
+		pgPool.Close()
+		_ = redisClient.Close()
+		return nil, fmt.Errorf("error connecting to Postgres: %w", err)
 	}
 	fmt.Println("\nPostgres started successfully")
-	
+
 	return &StorageService{
 		redisClient: redisClient,
-		pgPool: pgPool,
+		pgPool:      pgPool,
 	}, nil
 }
 
@@ -81,7 +94,19 @@ func (s *StorageService) Close() error {
 // Returns an error if the operation fails.
 func (s *StorageService) SaveUrlMapping(ctx context.Context, shortUrl string, originalUrl string, userId string) error {
 	if err := s.dbInsertUrl(ctx, shortUrl, originalUrl, userId); err != nil {
-		return err // includes ErrAlreadyExists
+		if !errors.Is(err, ErrAlreadyExists) {
+			return err
+		}
+
+		// Short codes are deterministic for a given URL and user. Treat a
+		// repeat submission as success, but keep true hash collisions visible.
+		storedUrl, storedUserID, lookupErr := s.dbGetUrl(ctx, shortUrl)
+		if lookupErr != nil {
+			return lookupErr
+		}
+		if storedUrl != originalUrl || storedUserID != userId {
+			return ErrAlreadyExists
+		}
 	}
 
 	if err := s.setCachedUrl(ctx, shortUrl, originalUrl); err != nil {
@@ -190,7 +215,7 @@ func (s *StorageService) IncrementClickCount(ctx context.Context, shortUrl strin
 	if err := s.setCachedUrlClickCounter(ctx, shortUrl, int(count)); err != nil {
 		log.Printf("error: %v", err)
 	}
-	
+
 	return count, nil
 }
 

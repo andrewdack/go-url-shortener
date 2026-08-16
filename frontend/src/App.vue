@@ -5,8 +5,7 @@ import { RouterLink, RouterView } from 'vue-router'
 <template>
   <header class="site-header">
     <RouterLink class="brand" to="/" aria-label="Tiny Route home">
-      <span class="brand-mark" aria-hidden="true">↗</span>
-      <span>Tiny Route</span>
+      <span>url shortener</span>
     </RouterLink>
 
     <nav aria-label="Primary navigation">
@@ -21,7 +20,7 @@ import { RouterLink, RouterView } from 'vue-router'
 
   <div class="ticks"></div>
   <footer class="site-footer">
-    <p>Small links, built with Go, Redis, and Vue.</p>
+    <p>Go · Redis · Vue</p>
     <a href="https://github.com/andrewdack/go-url-shortener" target="_blank" rel="noreferrer">
       View source <span aria-hidden="true">↗</span>
     </a>

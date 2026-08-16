@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 
 	"github.com/andrewdack/go-url-shortener/handler"
 	"github.com/andrewdack/go-url-shortener/router"
@@ -23,7 +24,12 @@ func main() {
 	h := handler.NewHandler(storeService)
 	r := router.SetupRouter(h)
 
-	if err := r.Run(":9808"); err != nil {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "9808"
+	}
+
+	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
 }

@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -9,12 +11,20 @@ import (
 )
 
 func CORS() gin.HandlerFunc {
+	allowedOrigins := []string{
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+		"https://andrewdack.github.io",
+	}
+	if configuredOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); configuredOrigins != "" {
+		allowedOrigins = strings.Split(configuredOrigins, ",")
+		for i := range allowedOrigins {
+			allowedOrigins[i] = strings.TrimSpace(allowedOrigins[i])
+		}
+	}
+
 	return cors.New(cors.Config{
-		AllowOrigins: []string{
-			"http://localhost:5173",
-			"http://127.0.0.1:5173",
-			"https://andrewdack.github.io",
-		},
+		AllowOrigins: allowedOrigins,
 		AllowMethods: []string{
 			http.MethodGet,
 			http.MethodPost,

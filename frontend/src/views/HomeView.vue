@@ -1,6 +1,5 @@
 <script setup>
 import { ref } from 'vue'
-import { RouterLink } from 'vue-router'
 import { ApiError, createShortUrl } from '../services/api'
 import { getUserId, rememberLink } from '../services/storage'
 
@@ -46,15 +45,9 @@ async function copyResult() {
 
 <template>
   <section class="hero-section">
-    <div class="eyebrow"><span class="status-dot"></span> URL shortener</div>
-    <h1>Long story,<br /><span>short link.</span></h1>
-    <p class="hero-copy">
-      Turn unwieldy URLs into tidy, shareable links. No account needed—your browser remembers
-      what you make.
-    </p>
+    <p class="hero-copy">Paste a URL and get a short link.</p>
 
     <form class="create-form" @submit.prevent="submit">
-      <label for="long-url">Paste a long URL</label>
       <div class="input-row">
         <input
           id="long-url"
@@ -63,14 +56,14 @@ async function copyResult() {
           required
           inputmode="url"
           autocomplete="url"
-          placeholder="https://example.com/a/very/long/path"
+          placeholder="https://example.com/long-path"
         />
         <button class="button primary" type="submit" :disabled="submitting">
           {{ submitting ? 'Shortening…' : 'Shorten link' }}
           <span aria-hidden="true">↗</span>
         </button>
       </div>
-      <p class="field-hint">Include the full address, starting with <code>https://</code></p>
+      <p class="field-hint">Use the full URL, including <code>https://</code></p>
     </form>
 
     <div v-if="errorMessage" class="notice error" role="alert">
@@ -80,7 +73,7 @@ async function copyResult() {
 
     <div v-if="result" class="result-card" aria-live="polite">
       <div>
-        <span class="result-label">Your short link is ready</span>
+        <span class="result-label">Short link</span>
         <a :href="result.shortUrl" target="_blank" rel="noreferrer">{{ result.shortUrl }}</a>
       </div>
       <button class="button secondary" type="button" @click="copyResult">
@@ -89,26 +82,4 @@ async function copyResult() {
     </div>
   </section>
 
-  <div class="ticks"></div>
-
-  <section class="feature-grid">
-    <article>
-      <span class="step">01</span>
-      <h2>Paste it</h2>
-      <p>Drop in any valid web address. We’ll handle the long part.</p>
-    </article>
-    <article>
-      <span class="step">02</span>
-      <h2>Share it</h2>
-      <p>Copy your eight-character short link and send it anywhere.</p>
-    </article>
-    <article>
-      <span class="step">03</span>
-      <h2>Manage it</h2>
-      <p>
-        Edit destinations, view clicks, or remove links from
-        <RouterLink to="/links">My links</RouterLink>.
-      </p>
-    </article>
-  </section>
 </template>

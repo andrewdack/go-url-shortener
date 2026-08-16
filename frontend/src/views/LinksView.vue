@@ -105,10 +105,9 @@ function formatDate(value) {
 <template>
   <section class="page-heading">
     <div>
-      <div class="eyebrow"><span class="status-dot"></span> Saved in this browser</div>
       <h1>My links</h1>
     </div>
-    <p>Check performance, change destinations, or clean up links you no longer need.</p>
+    <p>Edit or delete your saved links.</p>
   </section>
 
   <div class="ticks"></div>
@@ -193,7 +192,7 @@ function formatDate(value) {
   <section v-else class="empty-state">
     <span class="empty-icon" aria-hidden="true">↗</span>
     <h2>No short links yet</h2>
-    <p>Create your first link and it’ll show up here, ready to manage.</p>
+    <p>Your saved links will appear here.</p>
     <RouterLink class="button primary" to="/">Create a short link <span aria-hidden="true">↗</span></RouterLink>
   </section>
 </template>
